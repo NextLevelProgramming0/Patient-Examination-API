@@ -3,7 +3,13 @@ from datetime import datetime
 
 app = FastAPI()
 
-# quick helper to figure out modality from description
+# simple health check route so you know the API is running
+@app.get("/")
+def home():
+    return {"message": "Radiology API is running"}
+
+
+# tries to figure out the scan type from the description text
 def get_modality(desc):
     desc = desc.lower()
     if "mri" in desc:
@@ -17,7 +23,7 @@ def get_modality(desc):
     return None
 
 
-# not perfect list but works for now
+# basic list of body parts we care about for now
 BODY_PARTS = ["brain", "head", "chest", "abdomen", "spine"]
 
 
@@ -25,14 +31,14 @@ def is_relevant(current, prior):
     current_desc = current.get("study_description", "").lower()
     prior_desc = prior.get("study_description", "").lower()
 
-    # check modality first
+    # first check if both studies are the same type of scan
     current_mod = get_modality(current_desc)
     prior_mod = get_modality(prior_desc)
 
     if current_mod != prior_mod:
         return False
 
-    # check if any body part matches
+    # then check if they mention the same body region
     match = False
     for part in BODY_PARTS:
         if part in current_desc and part in prior_desc:
@@ -42,18 +48,18 @@ def is_relevant(current, prior):
     if not match:
         return False
 
-    # try date comparison (wrap in try in case format is weird)
+    # finally compare dates to make sure it's not too old
     try:
         current_date = datetime.fromisoformat(current["study_date"])
         prior_date = datetime.fromisoformat(prior["study_date"])
 
         diff_days = (current_date - prior_date).days
 
-        # using ~5 years as a cutoff for now
+        # ignore anything older than ~5 years
         if diff_days > 5 * 365:
             return False
     except Exception as e:
-        # if date parsing fails, just ignore and keep going
+        # if date parsing breaks, just skip the filter and continue
         print("date parsing issue:", e)
 
     return True
@@ -64,7 +70,7 @@ def predict(data: dict):
     predictions = []
 
     cases = data.get("cases", [])
-    print("received cases:", len(cases))  # simple debug log
+    print("received cases:", len(cases))
 
     for case in cases:
         case_id = case.get("case_id")
