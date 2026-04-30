@@ -9,65 +9,63 @@ def home():
     return {"message": "Radiology API is running"}
 
 
-# improved scan type detection with more real-world variants
+# tries to detect what kind of scan this is (MRI, CT, etc.)
 def get_modality(desc):
-    desc = desc.replace("-", " ").lower()
-
+    desc = desc.lower()
     if "mri" in desc:
         return "mri"
     elif "ct" in desc:
         return "ct"
-    elif "xray" in desc or "x ray" in desc or "x-ray" in desc or "radiograph" in desc:
+    elif "xray" in desc or "x-ray" in desc:
         return "xray"
     elif "ultrasound" in desc:
         return "ultrasound"
     return None
 
 
-# broader body part matching (more flexible than strict AND logic)
+# list of body parts we care about for matching
 BODY_PARTS = ["brain", "head", "chest", "abdomen", "spine"]
 
 
 def is_relevant(current, prior):
-    current_desc = current.get("study_description", "").replace("-", " ").lower()
-    prior_desc = prior.get("study_description", "").replace("-", " ").lower()
+    current_desc = current.get("study_description", "").lower()
+    prior_desc = prior.get("study_description", "").lower()
 
-    # check scan type match
+    # check if both studies are the same scan type
     current_mod = get_modality(current_desc)
     prior_mod = get_modality(prior_desc)
 
     if current_mod != prior_mod:
         return False
 
-    # looser body region match (improves recall)
+    # check if they mention the same body region
     match = False
     for part in BODY_PARTS:
-        if part in current_desc or part in prior_desc:
+        if part in current_desc and part in prior_desc:
             match = True
             break
 
     if not match:
         return False
 
-    # date filter (keep but make it safe)
+    # make sure the prior study isn't too old
     try:
         current_date = datetime.fromisoformat(current["study_date"])
         prior_date = datetime.fromisoformat(prior["study_date"])
 
-        diff_days = abs((current_date - prior_date).days)
+        diff_days = (current_date - prior_date).days
 
         # ignore anything older than 5 years
         if diff_days > 5 * 365:
             return False
-
     except Exception as e:
-        # if dates are bad, don't block prediction
+        # if date parsing fails, just skip the check
         print("date parsing issue:", e)
 
     return True
 
 
-# smoke test sometimes hits GET instead of POST
+# smoke test sometimes hits GET instead of POST, so keep this
 @app.get("/predict")
 def predict_get():
     return {"message": "Use POST /predict with JSON input"}
