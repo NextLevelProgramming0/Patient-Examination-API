@@ -1,20 +1,20 @@
 # Radiology Prior Study Relevance API
 
-This is a simple FastAPI service that helps decide whether prior medical imaging studies are relevant to a current study. It looks at things like the type of scan, the body part involved, and how far apart the studies were in time.
+This is a simple FastAPI service that helps determine whether prior medical imaging studies are relevant to a current study. It compares things like scan type, body region, and how far apart the studies are in time.
 
-It was built as a lightweight rule-based approach to organizing radiology cases.
+It’s a lightweight, rule-based implementation meant for organizing radiology cases and prototyping ideas around clinical data matching.
 
 ---
 
 ## What it does
 
-Given a current study and a list of prior studies, the API checks each prior study and returns whether it is likely relevant or not.
+Given a current study and a list of prior studies, the API checks each prior and returns whether it seems relevant or not.
 
-It uses a few basic rules:
+It uses a few simple rules:
 
-* Match imaging type (MRI, CT, X-ray, Ultrasound)
-* Match body region (brain, head, chest, abdomen, spine)
-* Check how old the prior study is (about a 5-year cutoff)
+* Matches imaging modality (MRI, CT, X-ray, Ultrasound)
+* Looks for overlapping body regions (brain, head, chest, abdomen, spine)
+* Filters based on time difference (roughly a 5-year cutoff)
 
 ---
 
@@ -26,7 +26,7 @@ It uses a few basic rules:
 
 ## Input format
 
-You send a list of cases. Each case has a current study and prior studies.
+You send a list of cases. Each case includes a current study and one or more prior studies.
 
 ```json
 {
@@ -53,7 +53,7 @@ You send a list of cases. Each case has a current study and prior studies.
 
 ## Output format
 
-The response returns a list of predictions for each prior study.
+The response returns one prediction per prior study.
 
 ```json
 {
@@ -73,17 +73,52 @@ The response returns a list of predictions for each prior study.
 
 For each prior study, the API:
 
-1. Checks the scan type based on keywords in the description
-2. Looks for matching body parts in the description
-3. Compares the study dates
-4. Filters out studies older than about 5 years
-5. Returns true or false for relevance
+* Detects imaging modality from keywords in the study description
+* Checks whether body regions overlap between current and prior studies
+* Compares study dates using ISO 8601 format
+* Filters out studies older than ~5 years
+* Returns a boolean relevance result
 
 ---
 
-## Running it locally
+## Running locally
 
 ### Install dependencies
 
 ```bash
+pip install fastapi uvicorn
 ```
+
+### Start the server
+
+```bash
+uvicorn main:app --reload
+```
+
+Then open:
+
+```
+http://127.0.0.1:8000/docs
+```
+
+---
+
+## Notes
+
+* This is a rule-based prototype, not a production medical system
+* Matching is based on keyword logic rather than NLP or clinical models
+* Date parsing expects ISO 8601 format strings
+
+---
+
+## Future improvements
+
+* Replace keyword rules with an NLP or ML model
+* Add confidence scores instead of boolean outputs
+* Improve anatomical mapping using medical ontologies
+* Add schema validation with Pydantic
+* Expand modality and body region coverage
+
+---
+
+This project is meant as a starting point and can be extended in several directions depending on the use case.
