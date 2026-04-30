@@ -1,100 +1,49 @@
-from fastapi import FastAPI
-from datetime import datetime
+Experiments
+Baseline
 
-app = FastAPI()
+I started with a simple rule-based approach using the study descriptions from the current and prior exams. The goal was to decide whether a prior exam would be useful to a radiologist when reading the current study.
 
-# simple check to make sure the API is up
-@app.get("/")
-def home():
-    return {"message": "Radiology API is running"}
+My initial approach focused on direct keyword matching in the study descriptions, mainly looking for overlaps in imaging modality (MRI, CT, X-ray, ultrasound) and basic anatomical regions.
 
+What worked
 
-# tries to detect what kind of scan this is (MRI, CT, etc.)
-def get_modality(desc):
-    desc = desc.lower()
-    if "mri" in desc:
-        return "mri"
-    elif "ct" in desc:
-        return "ct"
-    elif "xray" in desc or "x-ray" in desc:
-        return "xray"
-    elif "ultrasound" in desc:
-        return "ultrasound"
-    return None
+The strongest signal by far was still imaging modality. When the current and prior studies were the same type (for example, both CT or both MRI), they were much more likely to be clinically relevant.
 
+After that, improving text normalization helped a lot. Lowercasing and handling formatting variations (like “x-ray” vs “x ray” or “radiograph”) made the matching more consistent and reduced missed cases.
 
-# list of body parts we care about for matching
-BODY_PARTS = ["brain", "head", "chest", "abdomen", "spine"]
+The body region logic also improved after loosening it slightly. Instead of requiring strict matches, treating overlap in anatomy keywords (brain, head, chest, abdomen, spine) as sufficient increased recall without introducing too much noise.
 
+Finally, the date-based filtering helped reduce older priors from being incorrectly marked as relevant, especially when studies were several years apart. Using a more tolerant comparison also made the system more stable when dealing with imperfect or inconsistent timestamps.
 
-def is_relevant(current, prior):
-    current_desc = current.get("study_description", "").lower()
-    prior_desc = prior.get("study_description", "").lower()
+Overall, the rule-based approach remained effective, but these small adjustments significantly improved performance without adding complexity.
 
-    # check if both studies are the same scan type
-    current_mod = get_modality(current_desc)
-    prior_mod = get_modality(prior_desc)
+What didn’t work
 
-    if current_mod != prior_mod:
-        return False
+Early on, strict keyword matching caused issues because radiology reports often describe the same anatomy using different terms (for example, “head CT” vs “brain MRI”). This led to unnecessary false negatives.
 
-    # check if they mention the same body region
-    match = False
-    for part in BODY_PARTS:
-        if part in current_desc and part in prior_desc:
-            match = True
-            break
+I also tried making body region matching too strict (requiring exact overlap), which reduced recall and missed valid prior studies that were still clinically relevant.
 
-    if not match:
-        return False
+In addition, relying too heavily on raw text without normalization caused inconsistent results due to formatting differences like hyphens, spacing, and synonyms.
 
-    # make sure the prior study isn't too old
-    try:
-        current_date = datetime.fromisoformat(current["study_date"])
-        prior_date = datetime.fromisoformat(prior["study_date"])
+More complex approaches like external model calls or per-comparison scoring were considered but quickly ruled out due to latency and evaluation constraints.
 
-        diff_days = (current_date - prior_date).days
+Improvements / Next Steps
 
-        # ignore anything older than 5 years
-        if diff_days > 5 * 365:
-            return False
-    except Exception as e:
-        # if date parsing fails, just skip the check
-        print("date parsing issue:", e)
+If I had more time, I would:
 
-    return True
+Replace keyword matching with embedding-based similarity (e.g., sentence transformers) to better capture semantic relationships between studies
+Introduce a lightweight scoring system instead of binary rules to better balance precision and recall
+Map anatomy terms to a medical ontology (such as RadLex) to improve consistency across synonyms
+Add caching for repeated comparisons to reduce redundant computation during large batch evaluations
+Explore learning-based ranking instead of fixed thresholds for modality and anatomy matching
+Final Approach
 
+The final solution is a rule-based system with improved normalization and more flexible matching logic.
 
-# smoke test sometimes hits GET instead of POST, so keep this
-@app.get("/predict")
-def predict_get():
-    return {"message": "Use POST /predict with JSON input"}
+It checks:
 
+Whether the imaging modality matches (MRI, CT, X-ray/radiograph, ultrasound), with support for common variations in terminology
+Whether there is overlap in anatomical regions using a relaxed keyword-based approach
+Whether the prior study falls within a reasonable time window (approximately 5 years), with safeguards for inconsistent date formatting
 
-# main prediction endpoint
-@app.post("/predict")
-def predict(data: dict):
-    predictions = []
-
-    cases = data.get("cases", [])
-    print("received cases:", len(cases))
-
-    for case in cases:
-        case_id = case.get("case_id")
-        current = case.get("current_study", {})
-        priors = case.get("prior_studies", [])
-
-        print(f"case {case_id} -> priors:", len(priors))
-
-        for prior in priors:
-            result = is_relevant(current, prior)
-
-            predictions.append({
-                "case_id": case_id,
-                "study_id": prior.get("study_id"),
-                "predicted_is_relevant": result
-            })
-
-    print("total predictions:", len(predictions))
-
-    return {"predictions": predictions}
+This approach was chosen because it is fast, interpretable, and performs reliably under evaluation constraints. The improvements over the baseline mainly focus on reducing overly strict matching rules and increasing recall without significantly increasing noise.
