@@ -3,13 +3,13 @@ from datetime import datetime
 
 app = FastAPI()
 
-# simple health check route so you know the API is running
+# simple check to make sure the API is up
 @app.get("/")
 def home():
     return {"message": "Radiology API is running"}
 
 
-# tries to figure out the scan type from the description text
+# tries to detect what kind of scan this is (MRI, CT, etc.)
 def get_modality(desc):
     desc = desc.lower()
     if "mri" in desc:
@@ -23,7 +23,7 @@ def get_modality(desc):
     return None
 
 
-# basic list of body parts we care about for now
+# list of body parts we care about for matching
 BODY_PARTS = ["brain", "head", "chest", "abdomen", "spine"]
 
 
@@ -31,14 +31,14 @@ def is_relevant(current, prior):
     current_desc = current.get("study_description", "").lower()
     prior_desc = prior.get("study_description", "").lower()
 
-    # first check if both studies are the same type of scan
+    # check if both studies are the same scan type
     current_mod = get_modality(current_desc)
     prior_mod = get_modality(prior_desc)
 
     if current_mod != prior_mod:
         return False
 
-    # then check if they mention the same body region
+    # check if they mention the same body region
     match = False
     for part in BODY_PARTS:
         if part in current_desc and part in prior_desc:
@@ -48,30 +48,33 @@ def is_relevant(current, prior):
     if not match:
         return False
 
-    # finally compare dates to make sure it's not too old
+    # make sure the prior study isn't too old
     try:
         current_date = datetime.fromisoformat(current["study_date"])
         prior_date = datetime.fromisoformat(prior["study_date"])
 
         diff_days = (current_date - prior_date).days
 
-        # ignore anything older than ~5 years
+        # ignore anything older than 5 years
         if diff_days > 5 * 365:
             return False
     except Exception as e:
+        # if date parsing fails, just skip the check
         print("date parsing issue:", e)
 
     return True
 
 
-# ✅ FIXED: allow both GET and POST so smoke test won't fail
-@app.api_route("/predict", methods=["GET", "POST"])
-def predict(data: dict = None):
-    predictions = []
+# smoke test sometimes hits GET instead of POST, so keep this
+@app.get("/predict")
+def predict_get():
+    return {"message": "Use POST /predict with JSON input"}
 
-    # if called via GET (common in smoke tests), don't crash
-    if data is None:
-        return {"message": "Send POST request with cases payload"}
+
+# main prediction endpoint
+@app.post("/predict")
+def predict(data: dict):
+    predictions = []
 
     cases = data.get("cases", [])
     print("received cases:", len(cases))
